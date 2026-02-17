@@ -219,8 +219,8 @@ const DebtConsolidationCalculator = () => {
                 <div className="mt-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6 text-green-900">
                         <p className="mb-2">
-                            The APR of your current debts are <strong>{formatPercentage(result.existingBlendedRate)}</strong>.
-                            The APR of your consolidation loan, with fee considered, is <strong>{formatPercentage(result.newAPR)}</strong>.
+                            The APR of your current debts are <strong>{formatPercentage(result.existingBlendedRate, 2)}</strong>.
+                            The APR of your consolidation loan, with fee considered, is <strong>{formatPercentage(result.newAPR, 2)}</strong>.
                             So the financial cost of the consolidation loan is lower.
                         </p>
                         <p>
@@ -242,8 +242,8 @@ const DebtConsolidationCalculator = () => {
                             <tbody className="divide-y divide-gray-200 bg-white">
                                 <tr className="hover:bg-gray-50">
                                     <td className="px-6 py-3 font-bold text-gray-900">APR</td>
-                                    <td className="px-6 py-3 text-gray-700">{formatPercentage(result.existingBlendedRate)}</td>
-                                    <td className="px-6 py-3 text-gray-700">{formatPercentage(result.newAPR)}</td>
+                                    <td className="px-6 py-3 text-gray-700">{formatPercentage(result.existingBlendedRate, 2)}</td>
+                                    <td className="px-6 py-3 text-gray-700">{formatPercentage(result.newAPR, 2)}</td>
                                 </tr>
                                 <tr className="hover:bg-gray-50">
                                     <td className="px-6 py-3 font-bold text-gray-900">Monthly pay</td>

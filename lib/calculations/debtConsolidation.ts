@@ -40,48 +40,126 @@ export interface ConsolidationResult {
     cashFlowDifference: number; // NEW: Net Proceeds - Existing Debt
 }
 
-function calculateNPER(rate: number, payment: number, pv: number): number {
-    // rate is per period
-    if (rate === 0) return pv / payment;
+// IRR Calculation for APR
+function calculateIRR(cashFlow0: number, payments: number[]): number {
+    let low = 0;
+    let high = 1;
+    let guess = 0.05;
 
-    // If interest covers payment, never pays off
-    if (pv * rate >= payment) return Infinity;
+    for (let i = 0; i < 50; i++) {
+        guess = (low + high) / 2;
+        let npv = cashFlow0;
+        for (let j = 0; j < payments.length; j++) {
+            npv -= payments[j] / Math.pow(1 + guess, j + 1);
+        }
 
-    // NPER = -LN(1 - (PV * r) / PMT) / LN(1 + r)
-    const numerator = Math.log(1 - (pv * rate) / payment);
-    const denominator = Math.log(1 + rate);
-    return -numerator / denominator;
+        if (Math.abs(npv) < 0.0001) return guess;
+        if (npv > 0) high = guess; // Rate too low (NPV > 0 means PV(flows) < InitialInvetment, wait:
+        // NPV = Inv - PV(flows). If NPV > 0, Inv > PV. 
+        // Need higher rate to lower PV? No.
+        // PV = sum(C / (1+r)^t). Higher r -> Lower PV.
+        // If NPV = 100 - 90 = 10. We need PV to be 100. So lower r.
+        // Wait. NPV = -Inv + PV(flows). (Standard Def)
+        // Here: npv = cashFlow0 (positive) - sum(payments discounted).
+        // If npv > 0, cashFlow0 > PV. To make PV equal cashFlow0, we need LOWER rate?
+        // No, PV is sum(P / (1+r)^t). Lower r -> Higher PV.
+        // Yes, if PV < Inv, we need to RAISE PV, so LOWER r.
+        else low = guess;
+    }
+    return guess;
 }
 
-// Helper to calculate APR using binary search for rate
-function calculateAPR(nper: number, pmt: number, pv: number): number {
-    // APR is the rate r such that PV = PMT * (1 - (1+r)^-n) / r
-    // We search for r (monthly), then * 12 * 100 for APR%
+// Detailed Rollover Simulation (Avalanche Strategy: Highest Rate First)
+function simulateDebtRollover(debts: DebtItem[], totalMonthlyPayment: number) {
+    // Clone debts to simulate payoff without mutating original
+    const currentDebts = debts.map(d => ({ ...d }));
 
-    if (pv <= 0 || pmt <= 0) return 0;
+    // Sort buy Highest Rate Descending (Avalanche)
+    const sortedIndices = currentDebts
+        .map((d, index) => ({ index, rate: d.interestRate }))
+        .sort((a, b) => b.rate - a.rate)
+        .map(item => item.index);
 
-    let low = 0;
-    let high = 1; // 100% monthly is unreasonably high, good upper bound
-    let guess = 0.05; // 5% monthly
+    let month = 0;
+    let totalPaid = 0;
+    let totalInterest = 0;
+    const monthlyPayments: number[] = [];
 
-    for (let i = 0; i < 40; i++) { // Increased iterations for precision
-        guess = (low + high) / 2;
-        if (guess === 0) {
-            if (pmt * nper > pv) low = guess;
-            else high = guess;
-            continue;
+    // Safety break at 100 years
+    while (month < 1200) {
+        // Check if all paid
+        const totalBalance = currentDebts.reduce((sum, d) => sum + d.balance, 0);
+        if (totalBalance <= 0.01) break;
+
+        month++;
+        let availablePayment = totalMonthlyPayment;
+        let monthlyTotalPaid = 0;
+
+        // 1. Accrue Interest
+        currentDebts.forEach(d => {
+            if (d.balance > 0) {
+                const interest = d.balance * (d.interestRate / 100 / 12);
+                d.balance += interest;
+                totalInterest += interest;
+            }
+        });
+
+        // 2. Pay Minimums
+        currentDebts.forEach(d => {
+            if (d.balance > 0) {
+                let payment = d.minPayment;
+                if (payment > d.balance) payment = d.balance;
+
+                // Deduct from pool if possible, else just pay (which shouldn't happen if pool >= sum(mins))
+                if (availablePayment >= payment) {
+                    availablePayment -= payment;
+                } else {
+                    payment = availablePayment;
+                    availablePayment = 0;
+                }
+
+                d.balance -= payment;
+                monthlyTotalPaid += payment;
+            }
+        });
+
+        // 3. Rollover Extra to Highest Rate Debt
+        if (availablePayment > 0) {
+            for (const idx of sortedIndices) {
+                const debt = currentDebts[idx];
+                if (debt.balance > 0) {
+                    let payment = availablePayment;
+                    if (payment > debt.balance) {
+                        payment = debt.balance;
+                    }
+                    debt.balance -= payment;
+                    availablePayment -= payment;
+                    monthlyTotalPaid += payment;
+                    if (availablePayment <= 0.001) break;
+                }
+            }
         }
 
-        const calculatedPV = (pmt * (1 - Math.pow(1 + guess, -nper))) / guess;
-
-        if (calculatedPV > pv) {
-            // Rate is too low (PV calculation yields higher value means discount rate is too low)
-            low = guess;
-        } else {
-            high = guess;
-        }
+        totalPaid += monthlyTotalPaid;
+        monthlyPayments.push(monthlyTotalPaid);
     }
 
+    return { month, totalPaid, totalInterest, monthlyPayments };
+}
+
+// Calculate APR Helper for the New Loan (SIMPLE PV/PMT based)
+function calculateLoanAPR(nper: number, pmt: number, pv: number): number {
+    if (pv <= 0 || pmt <= 0) return 0;
+    let low = 0;
+    let high = 1;
+    let guess = 0.05;
+
+    for (let i = 0; i < 50; i++) {
+        guess = (low + high) / 2;
+        const calculatedPV = (pmt * (1 - Math.pow(1 + guess, -nper))) / guess;
+        if (calculatedPV > pv) low = guess; // Rate too low
+        else high = guess; // Rate too high
+    }
     return guess * 12 * 100;
 }
 
@@ -91,28 +169,18 @@ export function calculateDebtConsolidation(inputs: ConsolidationInputs): Consoli
     const existingTotalMonthlyPayment = debts.reduce((sum, d) => sum + d.minPayment, 0);
     const existingTotalBalance = debts.reduce((sum, d) => sum + d.balance, 0);
 
-    // Existing Blended Rate
-    const weightedRateSum = debts.reduce((sum, d) => sum + (d.balance * d.interestRate), 0);
-    const existingBlendedRate = existingTotalBalance > 0 ? weightedRateSum / existingTotalBalance : 0;
+    // Run Rollover Simulation for Existing Debts
+    const simulation = simulateDebtRollover(debts, existingTotalMonthlyPayment);
 
-    // Calculate Existing Metrics using Pooled Approach (as per user requirement)
-    // "The calculation of the existing debts assume you pay $X per month until payoff."
-    const rExisting = existingBlendedRate / 100 / 12;
-    const existingNPER = calculateNPER(rExisting, existingTotalMonthlyPayment, existingTotalBalance);
+    // Existing effective APR (IRR of cash flows)
+    const existingMonthlyIRR = calculateIRR(existingTotalBalance, simulation.monthlyPayments);
+    const existingBlendedRate = existingMonthlyIRR * 12 * 100;
 
-    // Handle infinite payoff (if payment < interest)
-    let existingTotalPayments = 0;
-    let existingTotalInterest = 0;
+    // Matches strictly user request:
+    const existingTimeToPayoffMonths = simulation.month;
+    const existingTotalInterest = simulation.totalInterest;
+    const existingTotalPayments = simulation.totalPaid;
 
-    if (existingNPER === Infinity) {
-        existingTotalPayments = 0; // Or Infinity, but 0 signals issue
-        existingTotalInterest = 0;
-    } else {
-        existingTotalPayments = existingNPER * existingTotalMonthlyPayment;
-        existingTotalInterest = existingTotalPayments - existingTotalBalance;
-    }
-
-    const existingTimeToPayoffMonths = existingNPER === Infinity ? Infinity : existingNPER;
 
     // New Loan Calc
     const principalBase = (desiredLoanAmount !== undefined && desiredLoanAmount > 0)
@@ -127,14 +195,8 @@ export function calculateDebtConsolidation(inputs: ConsolidationInputs): Consoli
         actualClosingCosts = closingCosts;
     }
 
-    // GROSS Loan Amount is just the principalBase (User Input).
-    // Fees are deducted from proceeds, NOT added to loan amount (based on user example).
-    // User Example: Loan $25k, Fee $1250. Payment based on $25k. Net cash $23750.
     const newLoanAmount = principalBase;
     const netProceeds = newLoanAmount - actualClosingCosts;
-
-    // Check if net proceeds cover the debt
-    // "Upfront cash flow" = NetProceeds - ExistingDebts
     const cashFlowDifference = netProceeds - existingTotalBalance;
 
     const rNew = newLoanRate / 100 / 12;
@@ -142,26 +204,23 @@ export function calculateDebtConsolidation(inputs: ConsolidationInputs): Consoli
 
     let newMonthlyPayment = 0;
     if (newLoanRate === 0) {
-        newMonthlyPayment = newLoanAmount / nNew;
+        newMonthlyPayment = newLoanAmount / nNew; // Principal only
     } else {
         newMonthlyPayment = (newLoanAmount * rNew * Math.pow(1 + rNew, nNew)) / (Math.pow(1 + rNew, nNew) - 1);
     }
 
     const newTotalPayments = (newMonthlyPayment * nNew);
-    // Total Interest is simply Total Payments - Principal Borrowed
     const newTotalInterest = newTotalPayments - newLoanAmount;
 
-    // APR Calculation
-    // Cost of borrowing: You receive `netProceeds` but pay `newMonthlyPayment` for `nNew` months.
-    // What is the rate?
-    const newAPR = calculateAPR(nNew, newMonthlyPayment, netProceeds);
+    // APR Calculation for New Loan
+    const newAPR = calculateLoanAPR(nNew, newMonthlyPayment, netProceeds);
 
     const monthlySavings = existingTotalMonthlyPayment - newMonthlyPayment;
 
     return {
         existingTotalMonthlyPayment,
         existingTotalBalance,
-        existingBlendedRate,
+        existingBlendedRate, // Now Effective APR
         existingTimeToPayoffMonths,
         existingTotalInterest,
         existingTotalPayments,
