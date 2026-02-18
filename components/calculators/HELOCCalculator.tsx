@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { Button } from "../ui/Button";
 import { MoneyInput } from "../ui/MoneyInput";
 import { Input } from "../ui/Input";
+import { NumberInput } from "../ui/NumberInput";
 import { Select } from "../ui/Select";
 import { ResultCard } from "../ui/ResultCard";
 import { calculateHELOC, HELOCInputs, HELOCResult } from "@/lib/calculations/heloc";
@@ -140,9 +141,8 @@ const HELOCCalculator = () => {
                                 <div className="grid grid-cols-3 gap-2">
                                     <div className="col-span-2">
                                         <label className="block text-sm font-medium text-gray-700 mb-1">Closing costs</label>
-                                        <input
-                                            type="number"
-                                            className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        <NumberInput
+                                            className="focus:outline-none focus:ring-2 focus:ring-indigo-500"
                                             value={values.closingCostsValue}
                                             onChange={(e) => handleChange("closingCostsValue", Number(e.target.value))}
                                         />

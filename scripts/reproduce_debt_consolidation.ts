@@ -1,5 +1,6 @@
 
 // Reproduction script for Debt Consolidation existing debts logic
+export { };
 // Trying to match:
 // Total Payments: $36,963.17
 // Total Interest: $12,963.22

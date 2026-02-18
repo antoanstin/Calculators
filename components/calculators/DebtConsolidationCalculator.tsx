@@ -14,7 +14,7 @@ import { Plus, Trash2, ChevronDown } from "lucide-react";
 
 const DebtConsolidationCalculator = () => {
     const [debts, setDebts] = useState<DebtItem[]>([
-        { id: "1", name: "Credit card 1", balance: 11000, interestRate: 17.99, minPayment: 260 },
+        { id: "1", name: "Credit card 1", balance: 10000, interestRate: 17.99, minPayment: 260 },
         { id: "2", name: "Credit card 2", balance: 7500, interestRate: 19.99, minPayment: 190 },
         { id: "3", name: "High interest debt", balance: 6500, interestRate: 18.99, minPayment: 180 },
     ]);
